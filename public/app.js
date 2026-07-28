@@ -549,4 +549,4 @@ refresh().catch((err) => {
   document.getElementById('cards').innerHTML =
     `<div class="card glass"><h3>Error</h3><div>${esc(err.message)}</div></div>`;
 });
-setInterval(() => refresh().catch(() => {}), 15000);
+setInterval(() => refresh().catch(() => {}), 30000);

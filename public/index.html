@@ -32,7 +32,6 @@ try { var t = localStorage.getItem('tokenalysis-theme'); if (t) document.documen
     --glass: hsl(var(--hg) 100% 79% / 0.055);
     --glass-strong: hsl(var(--hg) 100% 79% / 0.085);
     --glass-edge: hsl(var(--hg) 100% 87% / 0.16);
-    --glass-glint: hsl(var(--hg) 100% 93% / 0.55);
     --shadow: 0 24px 60px -24px rgba(2, 6, 20, 0.9), 0 4px 16px -8px rgba(2, 6, 20, 0.7);
     --ease-spring: cubic-bezier(0.34, 1.45, 0.42, 1);   /* follow-through & overshoot */
     --ease-glide: cubic-bezier(0.22, 0.8, 0.24, 1);     /* slow-out */
@@ -324,14 +323,6 @@ try { var t = localStorage.getItem('tokenalysis-theme'); if (t) document.documen
   }
   .reveal-row { opacity: 0; animation: row-in 0.5s var(--ease-glide) both; animation-delay: var(--d, 0s); }
   @keyframes row-in { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: translateX(0); } }
-
-  /* secondary action: an occasional glint sweeping across a random card */
-  .glint::before { animation: glint-sweep 1.4s var(--ease-glide); }
-  @keyframes glint-sweep {
-    0%   { transform: skewY(-3deg) translateX(-70%); opacity: 0.2; }
-    45%  { opacity: 1; }
-    100% { transform: skewY(-3deg) translateX(70%); opacity: 0; }
-  }
 
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }

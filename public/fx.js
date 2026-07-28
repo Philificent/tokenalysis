@@ -1,4 +1,4 @@
-/* Tokenalysis ambient FX: mote field, glass spotlight, card tilt, glints.
+/* Tokenalysis ambient FX: mote field, glass spotlight, card tilt.
    Purely decorative — dashboard works fine if this file fails. */
 'use strict';
 
@@ -160,17 +160,5 @@
         card.style.transform = '';
       }
     });
-  }
-
-  /* ---------- secondary action: a glint sweeps a random pane now and then ---------- */
-
-  if (!reduced) {
-    setInterval(() => {
-      const panes = document.querySelectorAll('.card, .panel.glass');
-      if (!panes.length) return;
-      const pick = panes[Math.random() * panes.length | 0];
-      pick.classList.add('glint');
-      setTimeout(() => pick.classList.remove('glint'), 1500);
-    }, 7000);
   }
 })();
