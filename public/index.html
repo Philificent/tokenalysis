@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tokenalysis</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script>/* apply saved theme before first paint to avoid a color flash */
+try { var t = localStorage.getItem('tokenalysis-theme'); if (t) document.documentElement.dataset.theme = t; } catch (e) {}</script>
+<style>
+  /* Duotone hue engine: two hues in (--ha / --hb), the whole interface follows.
+     --dh is the rotation applied to every supporting tint (glass, aurora, data colors). */
+  :root {
+    --ha: 199;                          /* duotone A — ice blue    */
+    --hb: 252;                          /* duotone B — violet      */
+    --dh: calc(var(--ha) - 199);        /* hue delta vs. Glacier   */
+    --hg: calc(216 + var(--dh));        /* glass tint hue          */
+    --bg: #05070f;
+    --text: #eaf0fb;
+    --muted: #93a0bd;
+    --faint: #5d6a88;
+    --accent: hsl(var(--ha) 100% 77%);
+    --accent-deep: hsl(var(--ha) 74% 61%);
+    --input: hsl(var(--ha) 100% 68%);
+    --output: hsl(var(--hb) 94% 79%);
+    --cwrite: hsl(calc(32 + var(--dh)) 100% 74%);
+    --cread: hsl(calc(162 + var(--dh)) 71% 65%);
+    --danger: #ff8787;
+    --glass: hsl(var(--hg) 100% 79% / 0.055);
+    --glass-strong: hsl(var(--hg) 100% 79% / 0.085);
+    --glass-edge: hsl(var(--hg) 100% 87% / 0.16);
+    --glass-glint: hsl(var(--hg) 100% 93% / 0.55);
+    --shadow: 0 24px 60px -24px rgba(2, 6, 20, 0.9), 0 4px 16px -8px rgba(2, 6, 20, 0.7);
+    --ease-spring: cubic-bezier(0.34, 1.45, 0.42, 1);   /* follow-through & overshoot */
+    --ease-glide: cubic-bezier(0.22, 0.8, 0.24, 1);     /* slow-out */
+    --z-sky: -3; --z-rays: -2; --z-motes-back: 0; --z-motes: 0; --z-content: 1; --z-grain: 4; --z-modal: 20;
+  }
+  :root[data-theme="nebula"]  { --ha: 265; --hb: 318; }
+  :root[data-theme="verdant"] { --ha: 152; --hb: 200; }
+  :root[data-theme="ember"]   { --ha: 22;  --hb: 302; }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 400 14px/1.55 "Outfit", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    overflow-x: hidden;
+    min-height: 100dvh;
+  }
+  ::selection { background: hsl(var(--ha) 100% 77% / 0.28); }
+
+  /* ============ atmosphere: sky, aurora, vanishing light rays, grain ============ */
+
+  .sky {
+    position: fixed; inset: 0; z-index: var(--z-sky); pointer-events: none;
+    background:
+      radial-gradient(120% 90% at 50% -10%, hsl(calc(223 + var(--dh)) 56% 14%) 0%, transparent 55%),
+      radial-gradient(80% 60% at 85% 110%, hsl(calc(212 + var(--dh)) 59% 12%) 0%, transparent 60%),
+      var(--bg);
+  }
+  .aurora { position: absolute; border-radius: 50%; filter: blur(90px); opacity: 0.5; will-change: transform; }
+  .aurora.a1 { width: 55vw; height: 44vh; left: -12vw; top: -16vh; background: radial-gradient(closest-side, hsl(calc(207 + var(--dh)) 77% 61% / 0.32), transparent 70%); animation: drift-a 26s ease-in-out infinite alternate; }
+  .aurora.a2 { width: 46vw; height: 40vh; right: -10vw; top: 4vh; background: radial-gradient(closest-side, hsl(var(--hb) 94% 79% / 0.20), transparent 70%); animation: drift-b 34s ease-in-out infinite alternate; }
+  .aurora.a3 { width: 52vw; height: 36vh; left: 24vw; bottom: -20vh; background: radial-gradient(closest-side, hsl(calc(162 + var(--dh)) 72% 65% / 0.13), transparent 70%); animation: drift-c 40s ease-in-out infinite alternate; }
+  @keyframes drift-a { from { transform: translate3d(0, 0, 0) scale(1); } to { transform: translate3d(9vw, 6vh, 0) scale(1.15); } }
+  @keyframes drift-b { from { transform: translate3d(0, 0, 0) scale(1.08); } to { transform: translate3d(-7vw, 9vh, 0) scale(0.94); } }
+  @keyframes drift-c { from { transform: translate3d(0, 0, 0) scale(1); } to { transform: translate3d(-10vw, -5vh, 0) scale(1.2); } }
+
+  /* light shafts converging on a vanishing point above the header */
+  .rays { position: fixed; inset: 0; z-index: var(--z-rays); pointer-events: none; overflow: hidden; }
+  .ray {
+    position: absolute; left: 50%; top: -22vh; width: 2px; height: 150vh;
+    transform-origin: top center;
+    background: linear-gradient(to bottom, hsl(calc(210 + var(--dh)) 100% 88% / 0.16), hsl(calc(210 + var(--dh)) 100% 88% / 0.045) 34%, transparent 78%);
+    animation: ray-breathe 9s ease-in-out infinite;
+  }
+  .ray.wide { width: 11vw; filter: blur(26px); background: linear-gradient(to bottom, hsl(calc(211 + var(--dh)) 100% 79% / 0.11), transparent 62%); }
+  @keyframes ray-breathe { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
+
+  #motes, #motes-back { position: fixed; inset: 0; pointer-events: none; mix-blend-mode: screen; }
+    /* both mote layers live under the content layer: sharp and bright in the open
+       gaps, frosted/dimmed by the cards' backdrop blur when they drift behind glass */
+    #motes { z-index: var(--z-motes); }
+    #motes-back { z-index: var(--z-motes-back); }
+
+  .grain { position: fixed; inset: 0; z-index: var(--z-grain); pointer-events: none; opacity: 0.05; mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  /* ============ header ============ */
+
+  header {
+    position: relative; z-index: var(--z-content);
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    padding: 22px 34px 18px;
+  }
+  header::after {
+    content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 1px;
+    background: linear-gradient(90deg, transparent, var(--glass-edge) 18%, var(--glass-edge) 82%, transparent);
+  }
+  .brand { display: flex; align-items: center; gap: 15px; }
+  .logo-mark {
+    display: block; flex: none;
+    filter: drop-shadow(0 2px 16px hsl(var(--ha) 100% 77% / 0.38));
+    animation: logoBreath 5.5s ease-in-out infinite;
+  }
+  @keyframes logoBreath {   /* the crystal inhales light, exhales it */
+    0%, 100% { filter: drop-shadow(0 2px 14px hsl(var(--ha) 100% 77% / 0.30)); }
+    50%      { filter: drop-shadow(0 2px 22px hsl(var(--ha) 100% 81% / 0.55)); }
+  }
+  /* themed crystal: gradient stops & traces follow the duotone hues */
+  .logo-mark .g-hi  { stop-color: hsl(var(--ha) 100% 98%); }
+  .logo-mark .g-a   { stop-color: hsl(var(--ha) 100% 81%); }
+  .logo-mark .g-b   { stop-color: hsl(var(--hb) 93% 85%); }
+  .logo-mark .g-a2  { stop-color: hsl(var(--ha) 100% 75%); }
+  .logo-mark .g-hi2 { stop-color: hsl(var(--ha) 100% 96%); }
+  .logo-mark .g-a3  { stop-color: hsl(var(--ha) 100% 77%); }
+  .logo-mark .g-b2  { stop-color: hsl(var(--hb) 94% 79%); }
+  .logo-mark .hexfill  { fill: hsl(var(--hg) 100% 77% / 0.05); }
+  .logo-mark .tfill    { fill: hsl(var(--hg) 100% 87% / 0.10); }
+  .logo-mark .corner   { stroke: hsl(var(--hg) 100% 95% / 0.55); }
+  .logo-mark .trace    { stroke: hsl(var(--ha) 100% 81%); }
+  .logo-mark .trace-dot{ fill: hsl(var(--ha) 100% 81%); }
+  header h1 {
+    margin: 0; font-family: "Outfit", sans-serif;
+    font-weight: 700; font-size: 29px; letter-spacing: 1.2px;
+    background: linear-gradient(180deg, #ffffff 6%, hsl(calc(210 + var(--dh)) 71% 92%) 34%, hsl(calc(210 + var(--dh)) 62% 81%) 58%, hsl(calc(217 + var(--dh)) 51% 63%) 82%, hsl(calc(210 + var(--dh)) 62% 81%) 100%);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+    -webkit-text-stroke: 0.4px rgba(235, 248, 255, 0.28);   /* glass edge on the glyphs */
+    text-shadow: 0 0 28px hsl(var(--ha) 100% 77% / 0.30), 0 0 70px hsl(var(--hb) 87% 74% / 0.16);
+  }
+  header .sub { color: var(--muted); font-size: 12.5px; letter-spacing: 0.3px; }
+  /* duotone theme picker — each swatch shows its own hue pair */
+  .theme-pick {
+    margin-left: auto; display: inline-flex; gap: 8px; align-items: center;
+    padding: 5px 8px; border-radius: 999px;
+    background: rgba(8, 14, 30, 0.5);
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.45), inset 0 0 0 1px hsl(var(--hg) 100% 83% / 0.07);
+  }
+  .theme-pick .swatch {
+    width: 19px; height: 19px; border-radius: 50%; border: 0; padding: 0; cursor: pointer;
+    background: linear-gradient(135deg, hsl(var(--sa) 100% 72%) 46%, hsl(var(--sb) 92% 74%) 54%);
+    box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.1);
+    opacity: 0.65;
+    transition: transform 0.3s var(--ease-spring), box-shadow 0.3s var(--ease-glide), opacity 0.3s;
+  }
+  .theme-pick .swatch:hover { transform: scale(1.18); opacity: 1; }
+  .theme-pick .swatch:active { transform: scale(0.92); }
+  .theme-pick .swatch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .theme-pick .swatch.active {
+    opacity: 1;
+    box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.5), 0 0 0 2px rgba(255, 255, 255, 0.75),
+                0 0 14px hsl(var(--sa) 100% 70% / 0.8);
+  }
+  @media (prefers-reduced-motion: reduce) { .logo-mark { animation: none; } }
+
+  main { position: relative; z-index: var(--z-content); padding: 30px 34px 80px; max-width: 1280px; margin: 0 auto; }
+
+  /* ============ glass surfaces ============ */
+
+  .glass {
+    position: relative;
+    background: linear-gradient(160deg, var(--glass-strong), var(--glass) 42%);
+    border-radius: 18px;
+    box-shadow:
+      inset 0 1px 0 hsl(var(--hg) 100% 92% / 0.14),           /* top bevel        */
+      inset 0 0 0 1px hsl(var(--hg) 100% 83% / 0.075),         /* edge refraction  */
+      inset 0 -18px 34px -26px hsl(var(--hg) 100% 74% / 0.20), /* pooled underlight*/
+      var(--shadow);
+    -webkit-backdrop-filter: blur(18px) saturate(150%);
+    backdrop-filter: blur(18px) saturate(150%);
+    overflow: hidden;
+  }
+  /* specular streak across the top face */
+  .glass::before {
+    content: ""; position: absolute; left: -30%; right: -30%; top: 0; height: 46%;
+    background: linear-gradient(172deg, hsl(var(--hg) 100% 95% / 0.085), transparent 58%);
+    transform: skewY(-3deg); transform-origin: left top;
+    pointer-events: none;
+  }
+  /* cursor spotlight ring — fx.js feeds --mx / --my */
+  .glass::after {
+    content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px;
+    background: radial-gradient(240px circle at var(--mx, 50%) var(--my, -40%),
+      hsl(calc(206 + var(--dh)) 100% 87% / 0.55), hsl(calc(206 + var(--dh)) 100% 87% / 0.06) 45%, transparent 70%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor; mask-composite: exclude;
+    opacity: 0; transition: opacity 0.5s var(--ease-glide);
+    pointer-events: none;
+  }
+  .glass:hover::after { opacity: 1; }
+
+  /* ============ headline cards ============ */
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(255px, 1fr)); gap: 16px; perspective: 1100px; }
+  .card { padding: 18px 20px 16px; transform-style: preserve-3d; transition: box-shadow 0.45s var(--ease-glide); will-change: transform; }
+  .card:hover { box-shadow: inset 0 1px 0 hsl(var(--hg) 100% 92% / 0.2), inset 0 0 0 1px hsl(var(--hg) 100% 83% / 0.12), 0 30px 70px -24px hsl(var(--hg) 71% 41% / 0.45), 0 4px 16px -8px rgba(2, 6, 20, 0.7); }
+  .card h3 { margin: 0 0 8px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 2.2px; color: var(--muted); }
+  .card .cost {
+    font-size: 30px; font-weight: 700; letter-spacing: -0.5px; font-variant-numeric: tabular-nums;
+    text-shadow: 0 0 26px hsl(var(--ha) 100% 77% / 0.35);
+  }
+  .card .toks { color: var(--muted); font-size: 12px; margin-top: 3px; font-variant-numeric: tabular-nums; }
+  .split { display: flex; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
+  .split span { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; }
+  .dot.in { background: var(--input);  box-shadow: 0 0 8px var(--input); }
+  .dot.out { background: var(--output); box-shadow: 0 0 8px var(--output); }
+  .dot.cw { background: var(--cwrite); box-shadow: 0 0 8px var(--cwrite); }
+  .dot.cr { background: var(--cread);  box-shadow: 0 0 8px var(--cread); }
+
+  /* ============ sections & panels ============ */
+
+  section { margin-top: 34px; }
+  section h2 {
+    font-size: 15px; font-weight: 500; margin: 0 0 13px; letter-spacing: 0.5px;
+    display: flex; align-items: center; gap: 10px; color: var(--text);
+  }
+  section h2::after { content: ""; height: 1px; flex: 1; background: linear-gradient(90deg, var(--glass-edge), transparent); }
+  .panel { padding: 20px; }
+  .chart-wrap { position: relative; height: 320px; }
+
+  .toolbar { display: flex; gap: 14px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+  .btn-group { display: inline-flex; gap: 4px; padding: 3px; border-radius: 12px;
+    background: rgba(8, 14, 30, 0.5); box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.45), inset 0 0 0 1px hsl(var(--hg) 100% 83% / 0.07); }
+  .toolbar button {
+    background: transparent; color: var(--muted); border: 0;
+    border-radius: 9px; padding: 6px 14px; font: 500 12px "Outfit", sans-serif; letter-spacing: 0.3px;
+    cursor: pointer;
+    transition: color 0.25s var(--ease-glide), background 0.25s var(--ease-glide),
+                box-shadow 0.3s var(--ease-glide), transform 0.18s var(--ease-spring);
+  }
+  .toolbar button:hover { color: var(--text); }
+  .toolbar button:active { transform: scale(0.94, 0.9); }             /* squash on press */
+  .toolbar button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .toolbar button.active {
+    color: hsl(var(--ha) 71% 7%);
+    background: linear-gradient(160deg, hsl(var(--ha) 100% 90%), var(--accent) 60%, var(--accent-deep));
+    box-shadow: 0 0 18px hsl(var(--ha) 100% 77% / 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  }
+  .toolbar .lbl { font-size: 10.5px; text-transform: uppercase; letter-spacing: 1.6px; color: var(--faint); }
+
+  /* ============ tables ============ */
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+  th, td { text-align: right; padding: 8px 11px; border-bottom: 1px solid hsl(var(--hg) 100% 83% / 0.07); white-space: nowrap; }
+  tr:last-child td { border-bottom: 0; }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: var(--faint); font-weight: 600; font-size: 10.5px; text-transform: uppercase; letter-spacing: 1.4px; }
+  tbody tr, table tr { transition: background 0.3s var(--ease-glide); }
+  tr.clickable { cursor: pointer; }
+  tr.clickable:hover td { background: hsl(var(--ha) 100% 77% / 0.06); }
+  tr.clickable:hover td:first-child { box-shadow: inset 3px 0 0 -1px var(--accent); }
+  .mcp-group td:first-child { color: var(--accent); font-weight: 600; letter-spacing: 0.4px; text-shadow: 0 0 14px hsl(var(--ha) 100% 77% / 0.5); }
+  .badge {
+    display: inline-block; padding: 2px 9px; border-radius: 9px; font-size: 10.5px; letter-spacing: 0.4px;
+    background: hsl(var(--hg) 100% 79% / 0.09); color: var(--muted);
+    box-shadow: inset 0 0 0 1px hsl(var(--hg) 100% 83% / 0.12), inset 0 1px 0 hsl(var(--hg) 100% 93% / 0.1);
+  }
+  .badge.mcp { background: hsl(var(--ha) 100% 77% / 0.13); color: var(--accent); box-shadow: inset 0 0 0 1px hsl(var(--ha) 100% 77% / 0.3), 0 0 12px hsl(var(--ha) 100% 77% / 0.18); }
+  .badge.err { background: rgba(255, 135, 135, 0.12); color: var(--danger); box-shadow: inset 0 0 0 1px rgba(255, 135, 135, 0.3); }
+
+  /* cache-hit micro meter */
+  .ratio {
+    display: inline-block; vertical-align: middle; margin-right: 7px;
+    width: 52px; height: 5px; border-radius: 3px;
+    background: hsl(var(--hg) 100% 79% / 0.1);
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.4);
+    overflow: hidden;
+  }
+  .ratio i {
+    display: block; height: 100%; border-radius: 3px;
+    background: linear-gradient(90deg, var(--cread), hsl(calc(162 + var(--dh)) 79% 81%));
+    box-shadow: 0 0 8px hsl(calc(162 + var(--dh)) 71% 65% / 0.7);
+    transition: width 0.9s var(--ease-spring);
+  }
+
+  .warn-banner {
+    display: none; margin-bottom: 18px; padding: 12px 16px; border-radius: 14px;
+    background: rgba(255, 192, 120, 0.08); color: #ffd8a8; font-size: 12px;
+    box-shadow: inset 0 0 0 1px rgba(255, 192, 120, 0.28), inset 0 1px 0 rgba(255, 220, 170, 0.15), 0 0 30px -10px rgba(255, 192, 120, 0.3);
+    -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+  }
+
+  /* ============ drill-down modal ============ */
+
+  #drill {
+    display: none; position: fixed; inset: 0; z-index: var(--z-modal);
+    background: rgba(3, 6, 14, 0.55);
+    -webkit-backdrop-filter: blur(10px) saturate(120%); backdrop-filter: blur(10px) saturate(120%);
+  }
+  #drill.open { display: block; animation: veil-in 0.35s var(--ease-glide) both; }
+  #drill .inner {
+    max-width: 640px; margin: 7vh auto; padding: 24px 26px; max-height: 82vh; overflow: auto;
+    animation: pane-in 0.55s var(--ease-spring) both;                 /* anticipation dip + overshoot */
+  }
+  @keyframes veil-in { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes pane-in {
+    0%   { opacity: 0; transform: translateY(26px) scale(0.94); }
+    60%  { opacity: 1; transform: translateY(-5px) scale(1.012); }
+    100% { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  #drill h3 { margin-top: 0; font-weight: 500; letter-spacing: 0.4px; }
+  #drill h4 { margin: 18px 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 1.8px; color: var(--muted); }
+  #drill pre { background: rgba(4, 8, 18, 0.6); padding: 12px; border-radius: 10px; font-size: 12px; overflow: auto; }
+  #drill .close {
+    float: right; cursor: pointer; color: var(--muted); font-size: 20px; line-height: 1;
+    width: 30px; height: 30px; display: grid; place-items: center; border-radius: 50%;
+    transition: transform 0.3s var(--ease-spring), color 0.2s, background 0.2s;
+  }
+  #drill .close:hover { color: var(--text); background: hsl(var(--ha) 100% 77% / 0.12); transform: rotate(90deg) scale(1.1); }
+  .muted { color: var(--muted); }
+  .empty { color: var(--muted); text-align: center; padding: 26px; font-style: italic; letter-spacing: 0.3px; }
+
+  /* ============ entrance choreography (first paint only) ============ */
+
+  .reveal { opacity: 0; animation: rise-in 0.8s var(--ease-spring) both; animation-delay: var(--d, 0s); }
+  @keyframes rise-in {
+    0%   { opacity: 0; transform: translateY(26px) scale(0.965); }
+    62%  { opacity: 1; transform: translateY(-4px) scale(1.006); }   /* overshoot */
+    100% { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  .reveal-row { opacity: 0; animation: row-in 0.5s var(--ease-glide) both; animation-delay: var(--d, 0s); }
+  @keyframes row-in { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: translateX(0); } }
+
+  /* secondary action: an occasional glint sweeping across a random card */
+  .glint::before { animation: glint-sweep 1.4s var(--ease-glide); }
+  @keyframes glint-sweep {
+    0%   { transform: skewY(-3deg) translateX(-70%); opacity: 0.2; }
+    45%  { opacity: 1; }
+    100% { transform: skewY(-3deg) translateX(70%); opacity: 0; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+    .reveal, .reveal-row { opacity: 1; }
+    #motes, #motes-back { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="sky" aria-hidden="true">
+  <div class="aurora a1"></div>
+  <div class="aurora a2"></div>
+  <div class="aurora a3"></div>
+</div>
+<div class="rays" aria-hidden="true">
+  <div class="ray wide" style="transform:rotate(-24deg);animation-delay:-1s"></div>
+  <div class="ray" style="transform:rotate(-17deg);animation-delay:-3s"></div>
+  <div class="ray" style="transform:rotate(-9deg);animation-delay:-6s"></div>
+  <div class="ray wide" style="transform:rotate(0deg);animation-delay:-4s;opacity:.7"></div>
+  <div class="ray" style="transform:rotate(7deg);animation-delay:-8s"></div>
+  <div class="ray" style="transform:rotate(15deg);animation-delay:-2s"></div>
+  <div class="ray wide" style="transform:rotate(23deg);animation-delay:-7s"></div>
+</div>
+<canvas id="motes-back" aria-hidden="true"></canvas>
+<canvas id="motes" aria-hidden="true"></canvas>
+<div class="grain" aria-hidden="true"></div>
+
+<header>
+  <div class="brand">
+    <svg class="logo-mark" viewBox="0 0 100 100" width="48" height="48" role="img" aria-label="Tokenalysis crystal logo">
+      <defs>
+        <linearGradient id="lg-ice" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" class="g-hi"/>
+          <stop offset="0.35" class="g-a"/>
+          <stop offset="0.62" class="g-b"/>
+          <stop offset="1" class="g-a2"/>
+        </linearGradient>
+        <linearGradient id="lg-ice2" x1="1" y1="0" x2="0" y2="1">
+          <stop offset="0" class="g-hi2"/>
+          <stop offset="0.5" class="g-a3"/>
+          <stop offset="1" class="g-b2"/>
+        </linearGradient>
+        <filter id="logo-glow" x="-40%" y="-40%" width="180%" height="180%">
+          <feGaussianBlur stdDeviation="2.1" result="b"/>
+          <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+      </defs>
+      <g filter="url(#logo-glow)" fill="none" stroke-linejoin="round" stroke-linecap="round">
+        <!-- beveled prism frame -->
+        <polygon class="hexfill" points="50,4 89.8,27 89.8,73 50,96 10.2,73 10.2,27" stroke="url(#lg-ice)" stroke-width="3"/>
+        <polygon points="50,13 82,31.5 82,68.5 50,87 18,68.5 18,31.5" stroke="url(#lg-ice2)" stroke-width="1.6"/>
+        <path class="corner" d="M50,4 50,13 M89.8,27 82,31.5 M89.8,73 82,68.5 M50,96 50,87 M10.2,73 18,68.5 M10.2,27 18,31.5" stroke-width="1"/>
+        <!-- T monogram, bracket arms, blade stem -->
+        <path class="tfill" d="M28,29 72,29 72,42 61,42 61,35.5 55.5,35.5 55.5,62 50,71 44.5,62 44.5,35.5 39,35.5 39,42 28,42 Z" stroke="url(#lg-ice)" stroke-width="2.4"/>
+        <!-- circuit traces -->
+        <g class="trace" stroke-width="1.5">
+          <path d="M24,49 31,49 33,52"/>
+          <circle cx="33" cy="56" r="2.1"/><path d="M33,58.5 33,62"/><circle class="trace-dot" cx="33" cy="64.5" r="1.3"/>
+          <path d="M76,49 69,49 67,52"/>
+          <circle cx="67" cy="56" r="2.1"/><path d="M67,58.5 67,62"/><circle class="trace-dot" cx="67" cy="64.5" r="1.3"/>
+        </g>
+      </g>
+    </svg>
+    <h1>Tokenalysis</h1>
+  </div>
+  <span class="sub">local token &amp; cost analytics &middot; <span id="pricing-age" class="muted"></span></span>
+  <span class="theme-pick" role="radiogroup" aria-label="Color theme">
+    <button class="swatch" data-theme-pick="glacier" title="Glacier" aria-label="Glacier theme" style="--sa:199;--sb:252"></button>
+    <button class="swatch" data-theme-pick="nebula" title="Nebula" aria-label="Nebula theme" style="--sa:265;--sb:318"></button>
+    <button class="swatch" data-theme-pick="verdant" title="Verdant" aria-label="Verdant theme" style="--sa:152;--sb:200"></button>
+    <button class="swatch" data-theme-pick="ember" title="Ember" aria-label="Ember theme" style="--sa:22;--sb:302"></button>
+  </span>
+</header>
+<main>
+  <div id="warnings" class="warn-banner"></div>
+
+  <div class="cards" id="cards"></div>
+
+  <section>
+    <h2>Daily cost</h2>
+    <div class="panel glass">
+      <div class="toolbar">
+        <span class="lbl">Group</span>
+        <span class="btn-group">
+          <button id="btn-class" class="active">Token class</button>
+          <button id="btn-model">Model</button>
+        </span>
+        <span class="lbl">Style</span>
+        <span class="btn-group">
+          <button id="style-bar" class="active">Crystal bars</button>
+          <button id="style-area" title="stacked translucent area">Aurora flow</button>
+          <button id="style-line" title="glowing lines">Starlight</button>
+        </span>
+      </div>
+      <div class="chart-wrap"><canvas id="timeseries"></canvas></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>By model</h2>
+    <div class="panel glass" style="overflow-x:auto"><table id="tbl-model"></table></div>
+  </section>
+
+  <section>
+    <h2>By tool / MCP</h2>
+    <div class="panel glass" style="overflow-x:auto"><table id="tbl-tool"></table></div>
+  </section>
+
+  <section>
+    <h2>By client</h2>
+    <div class="panel glass" style="overflow-x:auto"><table id="tbl-client"></table></div>
+  </section>
+
+  <section>
+    <h2>Recent requests</h2>
+    <div class="panel glass" style="overflow-x:auto"><table id="tbl-recent"></table></div>
+  </section>
+</main>
+
+<div id="drill"><div class="inner glass">
+  <span class="close" role="button" tabindex="0" aria-label="close"
+    onclick="document.getElementById('drill').classList.remove('open')">&times;</span>
+  <h3>Request <span id="drill-id"></span></h3>
+  <div id="drill-body"></div>
+</div></div>
+
+<script src="/chart.umd.js"></script>
+<script src="/fx.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>

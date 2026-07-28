@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- Tokenalysis crystal mark — favicon cut: heavier strokes, dark fill so it reads at 16px on any tab -->
+  <defs>
+    <linearGradient id="lg-ice" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f8fcff"/>
+      <stop offset="0.35" stop-color="#9fd9ff"/>
+      <stop offset="0.62" stop-color="#c3b1ff"/>
+      <stop offset="1" stop-color="#7fc4ff"/>
+    </linearGradient>
+    <linearGradient id="lg-ice2" x1="1" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#eaf6ff"/>
+      <stop offset="0.5" stop-color="#8ad8ff"/>
+      <stop offset="1" stop-color="#b197fc"/>
+    </linearGradient>
+  </defs>
+  <g fill="none" stroke-linejoin="round" stroke-linecap="round">
+    <polygon points="50,3 90.7,26.5 90.7,73.5 50,97 9.3,73.5 9.3,26.5" stroke="url(#lg-ice)" stroke-width="4.5" fill="#0a1122"/>
+    <polygon points="50,13 82,31.5 82,68.5 50,87 18,68.5 18,31.5" stroke="url(#lg-ice2)" stroke-width="2"/>
+    <path d="M28,29 72,29 72,42 61,42 61,35.5 55.5,35.5 55.5,62 50,71 44.5,62 44.5,35.5 39,35.5 39,42 28,42 Z" stroke="url(#lg-ice)" stroke-width="3.2" fill="rgba(190,225,255,0.14)"/>
+    <g stroke="#9fd9ff" stroke-width="2.2">
+      <path d="M24,49 31,49 33,52"/>
+      <circle cx="33" cy="56" r="2.4"/><path d="M33,59 33,62"/><circle cx="33" cy="64.8" r="1.7" fill="#9fd9ff"/>
+      <path d="M76,49 69,49 67,52"/>
+      <circle cx="67" cy="56" r="2.4"/><path d="M67,59 67,62"/><circle cx="67" cy="64.8" r="1.7" fill="#9fd9ff"/>
+    </g>
+  </g>
+</svg>

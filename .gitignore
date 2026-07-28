@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.db
+*.db-shm
+*.db-wal
+*.log
+.env
+
+# local verification harness + scratch screenshots (README images live in docs/)
+demo/
