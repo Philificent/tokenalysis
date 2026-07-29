@@ -1,5 +1,9 @@
 # Tokenalysis
 
+[![Publish Docker image](https://github.com/Philificent/tokenalysis/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/Philificent/tokenalysis/actions/workflows/docker-publish.yml)
+[![Latest release](https://img.shields.io/github/v/tag/Philificent/tokenalysis?label=release&sort=semver)](https://github.com/Philificent/tokenalysis/tags)
+[![Container image](https://img.shields.io/badge/ghcr.io-tokenalysis-2496ED?logo=docker&logoColor=white)](https://github.com/Philificent/tokenalysis/pkgs/container/tokenalysis)
+
 A local proxy for LLM APIs that records what providers don't show you: per-request **input / output / cache-write / cache-read** token counts, which **tools and MCP servers** were involved, which **clients and models** burned the tokens, and the **dollar cost** of each class — with a built-in dashboard.
 
 Single Node process. SQLite storage. No external services. Your API keys pass through untouched and are never stored.
