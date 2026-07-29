@@ -3,6 +3,7 @@
 [![Publish Docker image](https://github.com/Philificent/tokenalysis/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/Philificent/tokenalysis/actions/workflows/docker-publish.yml)
 [![Latest release](https://img.shields.io/github/v/tag/Philificent/tokenalysis?label=release&sort=semver)](https://github.com/Philificent/tokenalysis/tags)
 [![Container image](https://img.shields.io/badge/ghcr.io-tokenalysis-2496ED?logo=docker&logoColor=white)](https://github.com/Philificent/tokenalysis/pkgs/container/tokenalysis)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 A local proxy for LLM APIs that records what providers don't show you: per-request **input / output / cache-write / cache-read** token counts, which **tools and MCP servers** were involved, which **clients and models** burned the tokens, and the **dollar cost** of each class — with a built-in dashboard.
 
@@ -107,3 +108,7 @@ Covers SSE reassembly across chunk boundaries, usage extraction for streamed and
 
 - Cost is attributed at request granularity: a request that called tool X counts fully toward X's "involved cost". Providers don't expose per-tool token splits.
 - v1 records Anthropic and OpenRouter. Other providers pass through unrecorded if you point them at an existing mount.
+
+## License
+
+[MIT](LICENSE) © Philificent

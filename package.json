@@ -4,6 +4,12 @@
   "description": "Local LLM proxy that records per-request token usage (input/output/cache read/cache write), tool and MCP attribution, and dollar cost, with a built-in dashboard.",
   "type": "module",
   "main": "dist/index.js",
+  "license": "MIT",
+  "author": "Philificent",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Philificent/tokenalysis.git"
+  },
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
