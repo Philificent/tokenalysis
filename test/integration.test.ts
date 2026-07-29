@@ -97,6 +97,7 @@ beforeAll(async () => {
   app = createApp(
     {
       port: 0,
+      host: '127.0.0.1',
       dbPath: ':memory:',
       injectOpenRouterUsage: true,
       anthropicUpstream: upstreamUrl,

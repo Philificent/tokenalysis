@@ -1,0 +1,17 @@
+# Build context only needs src/, public/, and the package manifests.
+node_modules
+dist
+demo
+docs
+test
+.git
+.gitignore
+*.db
+*.db-shm
+*.db-wal
+*.log
+.env
+README.md
+Dockerfile
+.dockerignore
+compose.yaml

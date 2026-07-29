@@ -44,12 +44,15 @@ function main(): void {
     startPricingScheduler(db);
   }
 
-  // Localhost only: never expose the proxy or dashboard on the network.
-  serve({ fetch: app.fetch, port: config.port, hostname: '127.0.0.1' }, (info) => {
-    console.log(`Tokenalysis listening on http://127.0.0.1:${info.port}`);
-    console.log(`  dashboard  http://127.0.0.1:${info.port}/`);
-    console.log(`  anthropic  http://127.0.0.1:${info.port}/anthropic`);
-    console.log(`  openrouter http://127.0.0.1:${info.port}/openrouter/api/v1`);
+  // Loopback only by default: never expose the proxy or dashboard on the
+  // network unless HOST is deliberately overridden (Docker sets HOST=0.0.0.0
+  // inside the container and publishes the port back to the host's loopback).
+  serve({ fetch: app.fetch, port: config.port, hostname: config.host }, (info) => {
+    const shown = info.address === '0.0.0.0' || info.address === '::' ? 'localhost' : info.address;
+    console.log(`Tokenalysis listening on http://${shown}:${info.port}`);
+    console.log(`  dashboard  http://${shown}:${info.port}/`);
+    console.log(`  anthropic  http://${shown}:${info.port}/anthropic`);
+    console.log(`  openrouter http://${shown}:${info.port}/openrouter/api/v1`);
   });
 }
 

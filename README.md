@@ -9,6 +9,16 @@ Single Node process. SQLite storage. No external services. Your API keys pass th
 
 ## Quick start
 
+### Docker (recommended)
+
+```sh
+docker compose up -d
+```
+
+That's it — the container builds, stores its history in the `tokenalysis-data` volume (survives rebuilds and upgrades), and publishes the port to **your machine's loopback only** (`127.0.0.1:4141`), the same posture as running bare. If you want other machines on your network to use the proxy, change the `ports:` mapping in [compose.yaml](compose.yaml) to `"4141:4141"` — deliberately, since anyone who can reach the port can see your usage data and relay traffic through the proxy.
+
+### Bare Node
+
 ```sh
 npm install
 npm run build
@@ -53,7 +63,7 @@ Both are normalized to USD per million tokens and stored as dated snapshots. If 
 - Daily cost chart, stacked by token class or grouped by model.
 - Tables: by model (with cache-hit ratio), by tool / MCP server (call counts + involved cost), by client, and the last 100 requests with per-request drill-down.
 
-The server binds to `127.0.0.1` only.
+The server binds to `127.0.0.1` unless you override `HOST`.
 
 ### Screenshots
 
@@ -68,7 +78,8 @@ The whole interface is a themeable duotone (Glacier / Nebula / Verdant / Ember),
 | Env var | Default | Meaning |
 |---|---|---|
 | `PORT` | `4141` | Listen port |
-| `DB_PATH` | `./tokenalysis.db` | SQLite database file |
+| `HOST` | `127.0.0.1` | Bind address. The Docker image sets `0.0.0.0` (the container port is still only published to the host's loopback by default) |
+| `DB_PATH` | `./tokenalysis.db` | SQLite database file (`/data/tokenalysis.db` in Docker) |
 | `INJECT_OPENROUTER_USAGE` | `true` | Add `usage: {include: true}` to OpenRouter requests so streamed responses report usage/cost. Set to `false` for byte-exact request passthrough (streamed usage will then be null unless the client asks for it). |
 | `ANTHROPIC_UPSTREAM` | `https://api.anthropic.com` | Override upstream (tests) |
 | `OPENROUTER_UPSTREAM` | `https://openrouter.ai` | Override upstream (tests) |

@@ -1,5 +1,7 @@
 export interface Config {
   port: number;
+  /** Bind address. Loopback by default; Docker sets 0.0.0.0 inside the container. */
+  host: string;
   dbPath: string;
   injectOpenRouterUsage: boolean;
   /** Upstream base URLs; overridable for tests. */
@@ -17,6 +19,7 @@ function envBool(value: string | undefined, fallback: boolean): boolean {
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   return {
     port: Number(env.PORT) || 4141,
+    host: env.HOST || '127.0.0.1',
     dbPath: env.DB_PATH || './tokenalysis.db',
     injectOpenRouterUsage: envBool(env.INJECT_OPENROUTER_USAGE, true),
     anthropicUpstream: env.ANTHROPIC_UPSTREAM || 'https://api.anthropic.com',

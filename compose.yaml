@@ -1,0 +1,19 @@
+services:
+  tokenalysis:
+    build: .
+    image: tokenalysis
+    container_name: tokenalysis
+    restart: unless-stopped
+    ports:
+      # Published to the host's loopback only — same posture as running bare.
+      # To let other machines on your network use the proxy, change to "4141:4141".
+      - "127.0.0.1:4141:4141"
+    volumes:
+      # Usage history survives rebuilds and upgrades.
+      - tokenalysis-data:/data
+    # environment:
+    #   INJECT_OPENROUTER_USAGE: "false"
+    #   PRICING_REFRESH_ENABLED: "false"
+
+volumes:
+  tokenalysis-data:
