@@ -5,9 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tokenalysis</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.bunny.net">
+<link href="https://fonts.bunny.net/css?family=outfit:300,400,500,600,700&display=swap" rel="stylesheet">
 <script>/* apply saved theme before first paint to avoid a color flash */
 try { var t = localStorage.getItem('tokenalysis-theme'); if (t) document.documentElement.dataset.theme = t; } catch (e) {}</script>
 <style>
@@ -292,9 +291,14 @@ try { var t = localStorage.getItem('tokenalysis-theme'); if (t) document.documen
   }
   #drill.open { display: block; animation: veil-in 0.35s var(--ease-glide) both; }
   #drill .inner {
-    max-width: 640px; margin: 7vh auto; padding: 24px 26px; max-height: 82vh; overflow: auto;
+    max-width: 640px; margin: 7vh auto; padding: 22px 26px; max-height: 82vh;
+    display: flex; flex-direction: column; overflow: hidden;
     animation: pane-in 0.55s var(--ease-spring) both;                 /* anticipation dip + overshoot */
   }
+  /* only the body scrolls — the glass shell (and its cursor spotlight) stays
+     fixed, so the border-shine can't drift out of alignment as you scroll */
+  #drill .drill-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding-top: 4px; }
+  #drill .drill-scroll td { white-space: normal; word-break: break-word; }
   @keyframes veil-in { from { opacity: 0; } to { opacity: 1; } }
   @keyframes pane-in {
     0%   { opacity: 0; transform: translateY(26px) scale(0.94); }
@@ -305,13 +309,72 @@ try { var t = localStorage.getItem('tokenalysis-theme'); if (t) document.documen
   #drill h4 { margin: 18px 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 1.8px; color: var(--muted); }
   #drill pre { background: rgba(4, 8, 18, 0.6); padding: 12px; border-radius: 10px; font-size: 12px; overflow: auto; }
   #drill .close {
-    float: right; cursor: pointer; color: var(--muted); font-size: 20px; line-height: 1;
+    position: absolute; top: 18px; right: 20px; z-index: 1;
+    cursor: pointer; color: var(--muted); font-size: 20px; line-height: 1;
     width: 30px; height: 30px; display: grid; place-items: center; border-radius: 50%;
     transition: transform 0.3s var(--ease-spring), color 0.2s, background 0.2s;
   }
   #drill .close:hover { color: var(--text); background: hsl(var(--ha) 100% 77% / 0.12); transform: rotate(90deg) scale(1.1); }
   .muted { color: var(--muted); }
   .empty { color: var(--muted); text-align: center; padding: 26px; font-style: italic; letter-spacing: 0.3px; }
+
+  /* ============ scroll wrappers, load-more, expandable rows ============ */
+
+  /* horizontal scroll only when a table is genuinely wider than its panel — it
+     lives on an inner wrapper so the glass shell keeps clipping its specular
+     streak. A bare overflow-x on .glass leaked that streak and forced a phantom
+     scrollbar (invisible on macOS overlay bars, an ugly empty gutter on Windows). */
+  .scroll-x { overflow-x: auto; overflow-y: hidden; }
+
+  /* recent-requests fade + load-more bar */
+  .load-more { position: relative; margin-top: 4px; padding-top: 22px; text-align: center; }
+  .load-more[hidden] { display: none; }
+  .load-more::before {
+    content: ""; position: absolute; left: 0; right: 0; top: -46px; height: 46px; pointer-events: none;
+    background: linear-gradient(to bottom, rgba(5, 7, 15, 0), rgba(5, 7, 15, 0.82));
+  }
+  .load-more-btn {
+    position: relative; cursor: pointer; color: var(--muted);
+    background: rgba(8, 14, 30, 0.5); border: 0; border-radius: 10px;
+    padding: 8px 20px; font: 500 12px "Outfit", sans-serif; letter-spacing: 0.4px;
+    box-shadow: inset 0 0 0 1px hsl(var(--hg) 100% 83% / 0.1);
+    transition: color 0.25s var(--ease-glide), box-shadow 0.3s var(--ease-glide), transform 0.18s var(--ease-spring);
+  }
+  .load-more-btn:hover { color: var(--text); box-shadow: inset 0 0 0 1px hsl(var(--ha) 100% 77% / 0.35), 0 0 16px hsl(var(--ha) 100% 77% / 0.2); }
+  .load-more-btn:active { transform: scale(0.95); }
+  .load-more-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .load-more .count { display: block; margin-top: 9px; font-size: 10.5px; letter-spacing: 1px; color: var(--faint); text-transform: uppercase; }
+
+  /* expandable tool rows (By tool / MCP) */
+  td .caret {
+    display: inline-block; width: 0; height: 0; margin-right: 8px; vertical-align: middle;
+    border-left: 5px solid currentColor; border-top: 4px solid transparent; border-bottom: 4px solid transparent;
+    opacity: 0.5; transition: transform 0.25s var(--ease-glide), opacity 0.25s;
+  }
+  tr.expanded .caret { transform: rotate(90deg); opacity: 1; }
+  tr.tool-detail > td { padding: 0; background: hsl(var(--hg) 100% 79% / 0.03); }
+  .tool-detail-wrap { padding: 2px 0 10px 22px; animation: detail-in 0.35s var(--ease-glide) both; }
+  @keyframes detail-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+  .tool-detail-wrap table { width: 100%; }
+  .tool-detail-wrap th, .tool-detail-wrap td { padding: 5px 11px; border-bottom: 0; }
+  .tool-detail-wrap thead th { font-size: 9.5px; color: var(--faint); text-transform: uppercase; letter-spacing: 1.2px; }
+  .tool-detail-wrap .sub-empty { color: var(--muted); font-style: italic; padding: 8px 11px; }
+
+  /* collapsible "tools offered" in the drill modal */
+  details.tools-offered { margin: 16px 0 4px; }
+  details.tools-offered > summary {
+    cursor: pointer; list-style: none; user-select: none;
+    font-size: 11px; text-transform: uppercase; letter-spacing: 1.8px; color: var(--muted);
+    display: flex; align-items: center; gap: 9px;
+  }
+  details.tools-offered > summary::-webkit-details-marker { display: none; }
+  details.tools-offered > summary::before {
+    content: ""; width: 0; height: 0;
+    border-left: 5px solid currentColor; border-top: 4px solid transparent; border-bottom: 4px solid transparent;
+    opacity: 0.6; transition: transform 0.25s var(--ease-glide);
+  }
+  details.tools-offered[open] > summary::before { transform: rotate(90deg); }
+  details.tools-offered > p { margin: 9px 0 0; }
 
   /* ============ entrance choreography (first paint only) ============ */
 
@@ -424,22 +487,28 @@ try { var t = localStorage.getItem('tokenalysis-theme'); if (t) document.documen
 
   <section>
     <h2>By model</h2>
-    <div class="panel glass" style="overflow-x:auto"><table id="tbl-model"></table></div>
+    <div class="panel glass"><div class="scroll-x"><table id="tbl-model"></table></div></div>
   </section>
 
   <section>
     <h2>By tool / MCP</h2>
-    <div class="panel glass" style="overflow-x:auto"><table id="tbl-tool"></table></div>
+    <div class="panel glass"><div class="scroll-x"><table id="tbl-tool"></table></div></div>
   </section>
 
   <section>
     <h2>By client</h2>
-    <div class="panel glass" style="overflow-x:auto"><table id="tbl-client"></table></div>
+    <div class="panel glass"><div class="scroll-x"><table id="tbl-client"></table></div></div>
   </section>
 
   <section>
     <h2>Recent requests</h2>
-    <div class="panel glass" style="overflow-x:auto"><table id="tbl-recent"></table></div>
+    <div class="panel glass">
+      <div class="scroll-x"><table id="tbl-recent"></table></div>
+      <div class="load-more" id="recent-more" hidden>
+        <button class="load-more-btn" id="recent-more-btn" type="button">Load more</button>
+        <span class="count" id="recent-count"></span>
+      </div>
+    </div>
   </section>
 </main>
 
@@ -447,7 +516,7 @@ try { var t = localStorage.getItem('tokenalysis-theme'); if (t) document.documen
   <span class="close" role="button" tabindex="0" aria-label="close"
     onclick="document.getElementById('drill').classList.remove('open')">&times;</span>
   <h3>Request <span id="drill-id"></span></h3>
-  <div id="drill-body"></div>
+  <div class="drill-scroll"><div id="drill-body"></div></div>
 </div></div>
 
 <script src="/chart.umd.js"></script>

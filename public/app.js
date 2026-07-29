@@ -369,9 +369,49 @@ function renderModelTable(data) {
     </tr>`).join('');
 }
 
+/* Per-model breakdown for an expanded tool row (fetched lazily on click).
+   The set survives re-renders so an open row re-opens after a 30s refresh. */
+const expandedTools = new Set();
+
+function toolDetailHtml(rows) {
+  if (!rows.length) return '<div class="tool-detail-wrap"><div class="sub-empty">No model breakdown available.</div></div>';
+  return `<div class="tool-detail-wrap"><table>
+    <thead><tr><th>Model</th><th>Calls</th><th>Reqs</th><th>In</th><th>Out</th>
+      <th>Cache W</th><th>Cache R</th><th>Cost</th></tr></thead>
+    <tbody>${rows.map((m) => `<tr>
+      <td>${esc(m.model)}</td><td>${m.calls}</td><td>${m.requests}</td>
+      <td>${fmtTok(m.input_tokens)}</td><td>${fmtTok(m.output_tokens)}</td>
+      <td>${fmtTok(m.cache_creation_tokens)}</td><td>${fmtTok(m.cache_read_tokens)}</td>
+      <td>${fmtUsd(m.cost_total)}</td>
+    </tr>`).join('')}</tbody></table></div>`;
+}
+
+async function expandToolRow(row) {
+  const tool = row.dataset.tool;
+  row.classList.add('expanded');
+  expandedTools.add(tool);
+  const detail = document.createElement('tr');
+  detail.className = 'tool-detail';
+  detail.innerHTML = '<td colspan="5"><div class="tool-detail-wrap"><div class="sub-empty">Loading\u2026</div></div></td>';
+  row.after(detail);
+  try {
+    const data = await getJson(`/api/stats/by-tool-model?tool=${encodeURIComponent(tool)}`);
+    detail.firstChild.innerHTML = toolDetailHtml(data.rows);
+  } catch (e) {
+    detail.firstChild.innerHTML = '<div class="tool-detail-wrap"><div class="sub-empty">Failed to load breakdown.</div></div>';
+  }
+}
+
+function collapseToolRow(row) {
+  row.classList.remove('expanded');
+  expandedTools.delete(row.dataset.tool);
+  const next = row.nextElementSibling;
+  if (next && next.classList.contains('tool-detail')) next.remove();
+}
+
 function renderToolTable(data) {
   const t = document.getElementById('tbl-tool');
-  if (!data.rows.length) { t.innerHTML = '<tr><td class="empty">No tool calls recorded yet.</td></tr>'; return; }
+  if (!data.rows.length) { t.innerHTML = '<tr><td class="empty">No tool calls recorded yet.</td></tr>'; expandedTools.clear(); return; }
   const offered = new Map(data.offered.map((o) => [o.tool_name, o.offered_in_requests]));
 
   // Group MCP tools under their server; native tools in a flat group.
@@ -388,8 +428,9 @@ function renderToolTable(data) {
     html += `<tr class="mcp-group"><td colspan="5">${esc(group)}</td></tr>`;
     for (const r of rows) {
       const display = r.is_mcp ? r.tool_name.replace(`mcp__${r.mcp_server}__`, '') : r.tool_name;
-      html += `<tr${rowReveal(i++)}>
-        <td>${esc(display)} ${r.is_mcp ? '<span class="badge mcp">mcp</span>' : ''}</td>
+      const rev = booted ? '' : ' reveal-row';
+      html += `<tr class="clickable tool-row${rev}" style="--d:${Math.min(i++ * 0.045, 0.6)}s" data-tool="${esc(r.tool_name)}" title="Click for per-model breakdown">
+        <td><span class="caret"></span>${esc(display)} ${r.is_mcp ? '<span class="badge mcp">mcp</span>' : ''}</td>
         <td>${r.calls}</td><td>${r.requests}</td>
         <td>${offered.get(r.tool_name) || '\u2014'}</td>
         <td>${fmtUsd(r.involved_cost)}</td>
@@ -397,6 +438,18 @@ function renderToolTable(data) {
     }
   }
   t.innerHTML = html;
+
+  // wire click-to-expand, and re-open any rows that were open before this render
+  const present = new Set();
+  t.querySelectorAll('tr.tool-row').forEach((row) => {
+    present.add(row.dataset.tool);
+    row.addEventListener('click', () => {
+      if (row.classList.contains('expanded')) collapseToolRow(row);
+      else expandToolRow(row);
+    });
+    if (expandedTools.has(row.dataset.tool)) expandToolRow(row);
+  });
+  for (const tn of [...expandedTools]) if (!present.has(tn)) expandedTools.delete(tn);
 }
 
 function renderClientTable(data) {
@@ -412,9 +465,19 @@ function renderClientTable(data) {
     </tr>`).join('');
 }
 
+/* Recent requests: incremental "load more" paging (default page = 100). */
+const RECENT_PAGE = 100;
+let recentShown = RECENT_PAGE;
+
 function renderRecentTable(data) {
   const t = document.getElementById('tbl-recent');
-  if (!data.rows.length) { t.innerHTML = '<tr><td class="empty">No requests recorded yet.</td></tr>'; return; }
+  const bar = document.getElementById('recent-more');
+  const countEl = document.getElementById('recent-count');
+  if (!data.rows.length) {
+    t.innerHTML = '<tr><td class="empty">No requests recorded yet.</td></tr>';
+    if (bar) bar.hidden = true;
+    return;
+  }
   t.innerHTML = `<tr><th>Time</th><th>Provider</th><th>Model</th><th>Status</th><th>In</th><th>Out</th>
       <th>Cache W</th><th>Cache R</th><th>Cost</th><th>Latency</th></tr>` +
     data.rows.map((r, i) => `<tr class="clickable${booted ? '' : ' reveal-row'}" style="--d:${Math.min(i * 0.035, 0.5)}s" data-id="${r.id}">
@@ -430,6 +493,28 @@ function renderRecentTable(data) {
   t.querySelectorAll('tr.clickable').forEach((row) => {
     row.addEventListener('click', () => openDrill(row.dataset.id));
   });
+
+  const total = data.total ?? data.rows.length;
+  recentShown = data.rows.length;
+  if (bar) {
+    if (recentShown < total) {
+      bar.hidden = false;
+      countEl.textContent = `Showing ${recentShown} of ${total}`;
+    } else {
+      bar.hidden = true;
+    }
+  }
+}
+
+async function loadMoreRecent() {
+  const btn = document.getElementById('recent-more-btn');
+  if (btn) btn.disabled = true;
+  try {
+    const data = await getJson(`/api/stats/recent?limit=${recentShown + RECENT_PAGE}`);
+    renderRecentTable(data);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 }
 
 async function openDrill(id) {
@@ -441,7 +526,8 @@ async function openDrill(id) {
         `<li>${esc(tc.tool_name)} \u00d7${tc.call_count} ${tc.is_mcp ? `<span class="badge mcp">${esc(tc.mcp_server)}</span>` : ''}</li>`
       ).join('')
     : '<li class="muted">none</li>';
-  const offered = data.tools_offered.length
+  const offeredCount = data.tools_offered.length;
+  const offered = offeredCount
     ? data.tools_offered.map((o) => esc(o.tool_name)).join(', ')
     : '<span class="muted">none</span>';
   document.getElementById('drill-body').innerHTML = `
@@ -457,7 +543,10 @@ async function openDrill(id) {
       <tr><td>Total cost</td><td><b>${fmtUsd(r.cost_total)}</b></td></tr>
     </table>
     <h4>Tools called</h4><ul>${tools}</ul>
-    <h4>Tools offered</h4><p>${offered}</p>`;
+    <details class="tools-offered">
+      <summary>Tools offered (${offeredCount})</summary>
+      <p>${offered}</p>
+    </details>`;
   document.getElementById('drill').classList.add('open');
 }
 
@@ -479,7 +568,7 @@ async function refresh() {
     getJson('/api/stats/by-model'),
     getJson('/api/stats/by-tool'),
     getJson('/api/stats/by-client'),
-    getJson('/api/stats/recent'),
+    getJson(`/api/stats/recent?limit=${recentShown}`),
   ]);
   renderCards(summary);
   renderModelTable(byModel);
@@ -532,6 +621,7 @@ applyTheme(currentTheme(), { render: false }); // sync swatch ring with pre-pain
 document.getElementById('drill').addEventListener('click', (e) => {
   if (e.target.id === 'drill') e.target.classList.remove('open');
 });
+document.getElementById('recent-more-btn').addEventListener('click', () => loadMoreRecent().catch(() => {}));
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') document.getElementById('drill').classList.remove('open');
 });

@@ -110,6 +110,29 @@ export function statsRoutes(db: DB): Hono {
     return c.json({ rows, offered });
   });
 
+  app.get('/by-tool-model', (c) => {
+    const tool = c.req.query('tool');
+    if (!tool) return c.json({ error: 'tool query param required' }, 400);
+    const rows = db
+      .prepare(
+        `SELECT COALESCE(r.model, '(unknown)') AS model,
+                SUM(tc.call_count) AS calls,
+                COUNT(DISTINCT tc.request_id) AS requests,
+                COALESCE(SUM(r.input_tokens), 0) AS input_tokens,
+                COALESCE(SUM(r.output_tokens), 0) AS output_tokens,
+                COALESCE(SUM(r.cache_creation_tokens), 0) AS cache_creation_tokens,
+                COALESCE(SUM(r.cache_read_tokens), 0) AS cache_read_tokens,
+                COALESCE(SUM(r.cost_total), 0) AS cost_total
+         FROM tool_calls tc
+         JOIN requests r ON r.id = tc.request_id
+         WHERE tc.tool_name = ?
+         GROUP BY r.model
+         ORDER BY cost_total DESC`
+      )
+      .all(tool);
+    return c.json({ rows });
+  });
+
   app.get('/by-client', (c) => {
     const rows = db
       .prepare(
@@ -121,15 +144,18 @@ export function statsRoutes(db: DB): Hono {
   });
 
   app.get('/recent', (c) => {
+    const limit = Math.min(Math.max(Number(c.req.query('limit')) || 100, 1), 1000);
+    const offset = Math.max(Number(c.req.query('offset')) || 0, 0);
     const rows = db
       .prepare(
         `SELECT id, ts, provider, model, client, status, latency_ms, stream,
                 input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens,
                 cost_total, parse_error
-         FROM requests ORDER BY ts DESC LIMIT 100`
+         FROM requests ORDER BY ts DESC LIMIT ? OFFSET ?`
       )
-      .all();
-    return c.json({ rows });
+      .all(limit, offset);
+    const total = (db.prepare('SELECT COUNT(*) AS n FROM requests').get() as { n: number }).n;
+    return c.json({ rows, total });
   });
 
   app.get('/request/:id', (c) => {
