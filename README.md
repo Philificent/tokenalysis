@@ -17,6 +17,12 @@ docker compose up -d
 
 That's it — the container builds, stores its history in the `tokenalysis-data` volume (survives rebuilds and upgrades), and publishes the port to **your machine's loopback only** (`127.0.0.1:4141`), the same posture as running bare. If you want other machines on your network to use the proxy, change the `ports:` mapping in [compose.yaml](compose.yaml) to `"4141:4141"` — deliberately, since anyone who can reach the port can see your usage data and relay traffic through the proxy.
 
+Prefer a prebuilt image over a local build? Every `v*.*.*` git tag publishes a multi-arch image (`linux/amd64` + `linux/arm64`) to GHCR, so you can swap the `build: .` line in [compose.yaml](compose.yaml) for:
+
+```yaml
+    image: ghcr.io/philificent/tokenalysis:latest
+```
+
 ### Bare Node
 
 ```sh
