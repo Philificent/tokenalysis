@@ -45,6 +45,137 @@ function palette() {
 const REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 let booted = false; // first paint gets the entrance choreography, refreshes stay still
 
+/* ---------- date range ----------
+   Everything below the headline cards is scoped to one half-open [from, to)
+   window, resolved here in the browser's local time so the server never has to
+   guess a timezone. "All time" sends from=0 — that's how the API tells
+   "everything" apart from "no window given". */
+const RANGE_KEY = 'tokenalysis-range';
+const DAY_MS = 86400000;
+const PRESET_DAYS = { today: 1, '7d': 7, '30d': 30, '365d': 365 };
+
+let range = { preset: '30d', from: null, to: null };   // from/to only used by 'custom'
+
+/* Calendar arithmetic, not millisecond arithmetic: a DST day is 23 or 25 hours
+   long and subtracting 86400000 lands on the wrong date twice a year. */
+function dayStart(daysBack = 0) {
+  const d = new Date();
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() - daysBack).getTime();
+}
+
+function nextDay(ms) {
+  const d = new Date(ms);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime();
+}
+
+function prevDay(ms) {
+  const d = new Date(ms);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() - 1).getTime();
+}
+
+function parseDayInput(v) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v || '');
+  return m ? new Date(+m[1], +m[2] - 1, +m[3]).getTime() : null;
+}
+
+function toDayInput(ms) {
+  const d = new Date(ms);
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+/** The active selection as concrete epoch-ms bounds; `to: null` means "through now". */
+function resolvedRange() {
+  if (range.preset === 'all') return { from: 0, to: null };
+  if (range.preset === 'custom') return { from: range.from, to: range.to };
+  return { from: dayStart((PRESET_DAYS[range.preset] || 30) - 1), to: null };
+}
+
+function rangeQuery() {
+  const { from, to } = resolvedRange();
+  return to === null ? `from=${from}` : `from=${from}&to=${to}`;
+}
+
+/** A day or two of data is unreadable as a single bar, so short windows go hourly. */
+function rangeBucket() {
+  const { from, to } = resolvedRange();
+  return (to === null ? Date.now() : to) - from <= 2 * DAY_MS ? 'hour' : 'day';
+}
+
+function rangeNote() {
+  if (range.preset === 'all') return 'every recorded request';
+  const { from, to } = resolvedRange();
+  const fmt = (ms) => new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  const a = fmt(from);
+  const b = fmt(to === null ? Date.now() : prevDay(to));
+  return a === b ? a : `${a} \u2013 ${b}`;
+}
+
+function persistRange() {
+  try { localStorage.setItem(RANGE_KEY, JSON.stringify(range)); } catch (e) { /* private mode: won't persist */ }
+}
+
+function restoreRange() {
+  try {
+    const s = JSON.parse(localStorage.getItem(RANGE_KEY) || 'null');
+    if (!s) return;
+    const ok = PRESET_DAYS[s.preset] || s.preset === 'all'
+      || (s.preset === 'custom' && s.from > 0 && s.to > s.from);
+    if (ok) range = { preset: s.preset, from: s.from ?? null, to: s.to ?? null };
+  } catch (e) { /* corrupt entry: keep the default window */ }
+}
+
+/* `seedDates` fills the two pickers from the stored window. That only happens when
+   we open custom mode or reload from storage: doing it on every sync would fight the
+   user, since a start date later than the current end swaps the pair and the field
+   would snap back to a date they didn't choose. The note reports the effective
+   window, so the swap is still visible without rewriting their input. */
+function syncRangeUi({ seedDates = false } = {}) {
+  for (const btn of document.querySelectorAll('#range-presets button')) {
+    btn.classList.toggle('active', btn.dataset.range === range.preset);
+  }
+  const custom = document.getElementById('custom-range');
+  custom.hidden = range.preset !== 'custom';
+  if (range.preset === 'custom') {
+    const a = document.getElementById('range-from');
+    const b = document.getElementById('range-to');
+    if (seedDates || !a.value) a.value = toDayInput(range.from);
+    if (seedDates || !b.value) b.value = toDayInput(prevDay(range.to));  // stored end is exclusive
+  }
+  document.getElementById('range-note').textContent = rangeNote();
+  for (const card of document.querySelectorAll('#cards .card[data-range]')) {
+    const on = card.dataset.range === range.preset;
+    card.classList.toggle('picked', on);
+    card.setAttribute('aria-pressed', String(on));
+  }
+}
+
+function setRange(preset) {
+  // opening the custom pickers should never leave a half-set window on screen:
+  // seed them from whatever we were already showing
+  if (preset === 'custom' && (range.from === null || range.to === null)) {
+    const prev = resolvedRange();
+    range.from = prev.from || dayStart(29);
+    range.to = prev.to === null ? nextDay(dayStart()) : prev.to;
+  }
+  range.preset = preset;
+  recentLimit = recentSize;   // a new window starts at page one
+  persistRange();
+  syncRangeUi({ seedDates: true });
+  refresh().catch(() => {});
+}
+
+function applyCustomRange() {
+  const a = parseDayInput(document.getElementById('range-from').value);
+  const b = parseDayInput(document.getElementById('range-to').value);
+  if (a === null || b === null) return;      // half-filled: wait for the other date
+  range = { preset: 'custom', from: Math.min(a, b), to: nextDay(Math.max(a, b)) };
+  recentLimit = recentSize;
+  persistRange();
+  syncRangeUi();
+  refresh().catch(() => {});
+}
+
 async function getJson(url) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);
@@ -102,20 +233,24 @@ function tweenCost(el, from, to) {
 /* ---------- headline cards ---------- */
 
 function renderCards(summary) {
+  // each card doubles as the range preset for everything below it
   const periods = [
-    ['Today', summary.today],
-    ['This week', summary.week],
-    ['This month', summary.month],
-    ['All time', summary.all_time],
+    ['Today', summary.today, 'today'],
+    ['This week', summary.week, '7d'],
+    ['This month', summary.month, '30d'],
+    ['All time', summary.all_time, 'all'],
   ];
   const el = document.getElementById('cards');
-  el.innerHTML = periods.map(([label, p], i) => {
+  el.innerHTML = periods.map(([label, p, preset], i) => {
     const totalTok = (p.input_tokens || 0) + (p.output_tokens || 0)
       + (p.cache_creation_tokens || 0) + (p.cache_read_tokens || 0);
     const unpriced = p.unpriced_requests
       ? `<span class="badge err" title="requests with usage but no known price">${p.unpriced_requests} unpriced</span>`
       : '';
-    return `<div class="card glass${booted ? '' : ' reveal'}" style="--d:${i * 0.09}s">
+    const on = preset === range.preset;
+    return `<div class="card glass${booted ? '' : ' reveal'}${on ? ' picked' : ''}" style="--d:${i * 0.09}s"
+      data-range="${preset}" role="button" tabindex="0" aria-pressed="${on}"
+      title="Scope everything below to ${esc(label.toLowerCase())}">
       <h3>${label}</h3>
       <div class="cost" data-label="${label}">${fmtUsd(p.cost_total)}</div>
       <div class="toks">${fmtTok(totalTok)} tokens &middot; ${p.requests} requests ${unpriced}</div>
@@ -135,6 +270,15 @@ function renderCards(summary) {
       tweenCost(costEl, prevCost.get(label) ?? 0, target);
       prevCost.set(label, target);
     }
+  }
+
+  for (const card of el.querySelectorAll('.card[data-range]')) {
+    card.addEventListener('click', () => setRange(card.dataset.range));
+    card.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault();
+      setRange(card.dataset.range);
+    });
   }
 
   const age = document.getElementById('pricing-age');
@@ -251,13 +395,17 @@ function styleDataset(label, data, color) {
 }
 
 async function renderChart(animate) {
-  const data = await getJson(`/api/stats/timeseries?days=30&group=${chartMode}`);
+  const data = await getJson(`/api/stats/timeseries?${rangeQuery()}&bucket=${rangeBucket()}&group=${chartMode}`);
   const ctx = document.getElementById('timeseries');
   const pal = palette();
+  const hourly = data.bucket === 'hour';
+  const lbl = (key) => (hourly ? key.slice(11) : key);   // 'YYYY-MM-DD HH:00' -> 'HH:00'
+  const title = document.getElementById('ts-title');
+  if (title) title.textContent = hourly ? 'Cost by hour' : 'Cost by day';
   let labels, datasets;
 
   if (data.group === 'class') {
-    labels = data.rows.map((r) => r.day);
+    labels = data.rows.map((r) => lbl(r.day));
     datasets = [
       styleDataset('Input', data.rows.map((r) => r.cost_input), pal.input),
       styleDataset('Output', data.rows.map((r) => r.cost_output), pal.output),
@@ -265,12 +413,12 @@ async function renderChart(animate) {
       styleDataset('Cache read', data.rows.map((r) => r.cost_cache_read), pal.cacheRead),
     ];
   } else {
-    const days = [...new Set(data.rows.map((r) => r.day))];
+    const keys = [...new Set(data.rows.map((r) => r.day))];
     const models = [...new Set(data.rows.map((r) => r.model))];
     const lookup = new Map(data.rows.map((r) => [`${r.day}|${r.model}`, r.cost_total]));
-    labels = days;
+    labels = keys.map(lbl);
     datasets = models.map((m, i) =>
-      styleDataset(m, days.map((d) => lookup.get(`${d}|${m}`) || 0), pal.model[i % pal.model.length]));
+      styleDataset(m, keys.map((d) => lookup.get(`${d}|${m}`) || 0), pal.model[i % pal.model.length]));
   }
 
   const stacked = chartStyle !== 'line';
@@ -395,7 +543,7 @@ async function expandToolRow(row) {
   detail.innerHTML = '<td colspan="5"><div class="tool-detail-wrap"><div class="sub-empty">Loading\u2026</div></div></td>';
   row.after(detail);
   try {
-    const data = await getJson(`/api/stats/by-tool-model?tool=${encodeURIComponent(tool)}`);
+    const data = await getJson(`/api/stats/by-tool-model?tool=${encodeURIComponent(tool)}&${rangeQuery()}`);
     detail.firstChild.innerHTML = toolDetailHtml(data.rows);
   } catch (e) {
     detail.firstChild.innerHTML = '<div class="tool-detail-wrap"><div class="sub-empty">Failed to load breakdown.</div></div>';
@@ -465,16 +613,27 @@ function renderClientTable(data) {
     </tr>`).join('');
 }
 
-/* Recent requests: incremental "load more" paging (default page = 100). */
-const RECENT_PAGE = 100;
-let recentShown = RECENT_PAGE;
+/* Recent requests: the page size is user-picked (25/50/100) and remembered;
+   "load more" then walks forward one page at a time. */
+const RECENT_SIZE_KEY = 'tokenalysis-recent-size';
+const RECENT_SIZES = [25, 50, 100];
+let recentSize = 50;
+let recentLimit = recentSize;
+
+function restoreRecentSize() {
+  try {
+    const saved = Number(localStorage.getItem(RECENT_SIZE_KEY));
+    if (RECENT_SIZES.includes(saved)) recentSize = saved;
+  } catch (e) { /* private mode: page size just won't persist */ }
+  recentLimit = recentSize;
+}
 
 function renderRecentTable(data) {
   const t = document.getElementById('tbl-recent');
   const bar = document.getElementById('recent-more');
-  const countEl = document.getElementById('recent-count');
+  const btn = document.getElementById('recent-more-btn');
   if (!data.rows.length) {
-    t.innerHTML = '<tr><td class="empty">No requests recorded yet.</td></tr>';
+    t.innerHTML = '<tr><td class="empty">No requests in this range.</td></tr>';
     if (bar) bar.hidden = true;
     return;
   }
@@ -495,26 +654,36 @@ function renderRecentTable(data) {
   });
 
   const total = data.total ?? data.rows.length;
-  recentShown = data.rows.length;
+  const shown = data.rows.length;
+  // hold whatever depth is on screen so background refreshes don't collapse it
+  recentLimit = Math.max(recentSize, shown);
   if (bar) {
-    if (recentShown < total) {
-      bar.hidden = false;
-      countEl.textContent = `Showing ${recentShown} of ${total}`;
-    } else {
-      bar.hidden = true;
-    }
+    bar.hidden = false;
+    btn.hidden = shown >= total;
+    document.getElementById('recent-shown').textContent = shown;
+    document.getElementById('recent-total').textContent = total;
   }
+}
+
+async function fetchRecent(limit) {
+  return getJson(`/api/stats/recent?${rangeQuery()}&limit=${limit}`);
 }
 
 async function loadMoreRecent() {
   const btn = document.getElementById('recent-more-btn');
-  if (btn) btn.disabled = true;
+  btn.disabled = true;
   try {
-    const data = await getJson(`/api/stats/recent?limit=${recentShown + RECENT_PAGE}`);
-    renderRecentTable(data);
+    renderRecentTable(await fetchRecent(recentLimit + recentSize));
   } finally {
-    if (btn) btn.disabled = false;
+    btn.disabled = false;
   }
+}
+
+async function setRecentSize(n) {
+  recentSize = n;
+  recentLimit = n;
+  try { localStorage.setItem(RECENT_SIZE_KEY, String(n)); } catch (e) { /* private mode */ }
+  renderRecentTable(await fetchRecent(recentLimit));
 }
 
 async function openDrill(id) {
@@ -563,20 +732,23 @@ async function renderWarnings() {
 /* ---------- boot ---------- */
 
 async function refresh() {
+  const q = rangeQuery();
   const [summary, byModel, byTool, byClient, recent] = await Promise.all([
-    getJson('/api/stats/summary'),
-    getJson('/api/stats/by-model'),
-    getJson('/api/stats/by-tool'),
-    getJson('/api/stats/by-client'),
-    getJson(`/api/stats/recent?limit=${recentShown}`),
+    getJson('/api/stats/summary'),          // the cards report their own fixed periods
+    getJson(`/api/stats/by-model?${q}`),
+    getJson(`/api/stats/by-tool?${q}`),
+    getJson(`/api/stats/by-client?${q}`),
+    fetchRecent(recentLimit),
   ]);
   renderCards(summary);
+  syncRangeUi();
   renderModelTable(byModel);
   renderToolTable(byTool);
   renderClientTable(byClient);
   renderRecentTable(recent);
   await renderChart(!booted);
   await renderWarnings();
+  lastRefreshAt = Date.now();
   booted = true;
 }
 
@@ -626,6 +798,23 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') document.getElementById('drill').classList.remove('open');
 });
 
+/* ---------- date range bar ---------- */
+
+restoreRange();
+restoreRecentSize();
+for (const btn of document.querySelectorAll('#range-presets button')) {
+  btn.addEventListener('click', () => setRange(btn.dataset.range));
+}
+document.getElementById('range-apply').addEventListener('click', applyCustomRange);
+for (const id of ['range-from', 'range-to']) {
+  document.getElementById(id).addEventListener('change', applyCustomRange);
+}
+syncRangeUi({ seedDates: true });   // first paint: the pickers start empty
+
+const recentSizeSel = document.getElementById('recent-size');
+recentSizeSel.value = String(recentSize);
+recentSizeSel.addEventListener('change', () => setRecentSize(Number(recentSizeSel.value)).catch(() => {}));
+
 /* Once an entrance finishes, drop the animation class so the fill-mode
    transform can't fight the live tilt/hover transforms. */
 document.addEventListener('animationend', (e) => {
@@ -635,8 +824,40 @@ document.addEventListener('animationend', (e) => {
   }
 });
 
-refresh().catch((err) => {
-  document.getElementById('cards').innerHTML =
-    `<div class="card glass"><h3>Error</h3><div>${esc(err.message)}</div></div>`;
+/* ---------- refresh cadence ----------
+   A buried tab gets nothing: no polling, no repaints, no needless SQL. Coming
+   back refreshes straight away if the numbers went stale while we were away,
+   and each scheduled poll waits for an idle slice so it can't land in the
+   middle of a scroll or an entrance animation. */
+
+const POLL_MS = 30000;
+let pollTimer = 0;
+let lastRefreshAt = 0;
+
+const whenIdle = window.requestIdleCallback
+  ? (fn) => window.requestIdleCallback(fn, { timeout: 3000 })
+  : (fn) => setTimeout(fn, 0);
+
+function schedulePoll() {
+  clearTimeout(pollTimer);
+  if (document.hidden) return;
+  pollTimer = setTimeout(() => {
+    whenIdle(() => refresh().catch(() => {}).finally(schedulePoll));
+  }, POLL_MS);
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    clearTimeout(pollTimer);
+    return;
+  }
+  if (Date.now() - lastRefreshAt >= POLL_MS) refresh().catch(() => {});
+  schedulePoll();
 });
-setInterval(() => refresh().catch(() => {}), 30000);
+
+refresh()
+  .catch((err) => {
+    document.getElementById('cards').innerHTML =
+      `<div class="card glass"><h3>Error</h3><div>${esc(err.message)}</div></div>`;
+  })
+  .finally(schedulePoll);

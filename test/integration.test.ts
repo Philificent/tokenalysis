@@ -204,4 +204,65 @@ describe('proxy integration', () => {
     const count = (db.prepare('SELECT COUNT(*) AS n FROM requests').get() as { n: number }).n;
     expect(count).toBe(2); // unchanged
   });
+
+  it('scopes aggregates and recent requests to the from/to window', async () => {
+    const now = Date.now();
+    const inWindow = `from=${now - 60 * 60 * 1000}`;
+    const longGone = `from=${now - 40 * 24 * 60 * 60 * 1000}&to=${now - 30 * 24 * 60 * 60 * 1000}`;
+
+    const recent = (await (await app.request(`http://localhost/api/stats/recent?${inWindow}`)).json()) as {
+      rows: unknown[];
+      total: number;
+    };
+    expect(recent.total).toBe(2);
+    expect(recent.rows).toHaveLength(2);
+
+    // a window that predates every row must come back empty, totals included
+    const empty = (await (await app.request(`http://localhost/api/stats/recent?${longGone}`)).json()) as {
+      rows: unknown[];
+      total: number;
+    };
+    expect(empty.total).toBe(0);
+    expect(empty.rows).toHaveLength(0);
+
+    for (const path of ['by-model', 'by-client', 'by-tool']) {
+      const scoped = (await (await app.request(`http://localhost/api/stats/${path}?${inWindow}`)).json()) as {
+        rows: unknown[];
+      };
+      expect(scoped.rows.length, path).toBeGreaterThan(0);
+      const outside = (await (await app.request(`http://localhost/api/stats/${path}?${longGone}`)).json()) as {
+        rows: unknown[];
+      };
+      expect(outside.rows, path).toHaveLength(0);
+    }
+
+    const byToolModel = (await (
+      await app.request(`http://localhost/api/stats/by-tool-model?tool=mcp__github__list_prs&${longGone}`)
+    ).json()) as { rows: unknown[] };
+    expect(byToolModel.rows).toHaveLength(0);
+
+    // the headline cards keep reporting their own fixed periods
+    const summary = (await (await app.request(`http://localhost/api/stats/summary?${longGone}`)).json()) as {
+      all_time: { requests: number };
+    };
+    expect(summary.all_time.requests).toBe(2);
+  });
+
+  it('buckets the timeseries hourly on request and daily otherwise', async () => {
+    const from = `from=${Date.now() - 60 * 60 * 1000}`;
+    const hourly = (await (await app.request(`http://localhost/api/stats/timeseries?${from}&bucket=hour`)).json()) as {
+      bucket: string;
+      rows: { day: string }[];
+    };
+    expect(hourly.bucket).toBe('hour');
+    expect(hourly.rows.length).toBeGreaterThan(0);
+    expect(hourly.rows[0].day).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:00$/);
+
+    const daily = (await (await app.request(`http://localhost/api/stats/timeseries?${from}`)).json()) as {
+      bucket: string;
+      rows: { day: string }[];
+    };
+    expect(daily.bucket).toBe('day');
+    expect(daily.rows[0].day).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
 });
