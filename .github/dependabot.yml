@@ -1,17 +1,31 @@
-# Dependabot version updates with a release cooldown.
-# Security updates are not delayed by cooldown.
+# Dependabot version updates: monthly, grouped, with a release cooldown.
+# Grouping + monthly cuts the number of PRs (and CI runs / Actions minutes).
+# Security updates are separate: they still open right away, are not
+# delayed by cooldown, and are not limited by open-pull-requests-limit.
 version: 2
 updates:
   - package-ecosystem: "npm"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
+    open-pull-requests-limit: 3
     cooldown:
       default-days: 7
       semver-patch-days: 3
+    groups:
+      npm-minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+      npm-major:
+        patterns: ["*"]
+        update-types: ["major"]
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
+    open-pull-requests-limit: 3
     cooldown:
       default-days: 7
+    groups:
+      github-actions:
+        patterns: ["*"]
