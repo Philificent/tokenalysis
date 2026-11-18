@@ -23,13 +23,13 @@
   "dependencies": {
     "@hono/node-server": "^2.1.5",
     "better-sqlite3": "^11.8.0",
-    "hono": "^4.13.13"
+    "hono": "^4.13.14"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.10.2",
-    "chart.js": "^4.5.1",
-    "tsx": "^4.19.2",
+    "chart.js": "^4.6.1",
+    "tsx": "^4.23.15",
     "typescript": "^5.7.2",
     "vitest": "^4.1.12"
   },
